@@ -7,8 +7,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'nwsAccess.dart';
 import 'effects.dart';
+import 'alerts.dart';
+import 'dart:io';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,17 +29,17 @@ void main() async {
     ),
   );
 
-  runApp(const WeatherlyApp());
+  runApp(const WeatherApp());
 }
 
-class WeatherlyApp extends StatefulWidget {
-  const WeatherlyApp({super.key});
+class WeatherApp extends StatefulWidget {
+  const WeatherApp({super.key});
 
   @override
-  State<WeatherlyApp> createState() => _WeatherlyAppState();
+  State<WeatherApp> createState() => WeatherState();
 }
 
-class _WeatherlyAppState extends State<WeatherlyApp> {
+class WeatherState extends State<WeatherApp> {
   ThemeMode theme = ThemeMode.light;
 
   @override
@@ -100,25 +105,35 @@ class _HomeScreenState extends State<HomeScreen> {
     heading: 0.0
   ); 
 
+  bool showAlerts = true;
+  List<dynamic> sevenDayForecast = []; 
+  List<Marker> markers = [];  
+
+  final ImagePicker _picker = ImagePicker();
+
   @override
   void initState() {
     super.initState();
     loadWeatherData();
+    fetchMessages();
   }
 
   Future<void> loadWeatherData() async {
-    // You can delay the call to get the current location here
     Future.delayed(const Duration(seconds: 30), () {
-      fetchWeather(); // Call after 30 seconds
+      fetchWeather();
+      fetch7DayForecast();
     });
   }
 
+  void toggleWeatherAlertsVisibility() {
+    setState(() {
+      showAlerts = !showAlerts;  
+    });
+  }
+  
   Future<void> fetchWeather() async {
-    // Fetch the weather based on the current location
     final nwsService = NWSWeatherService();
     final String apiKey = dotenv.env['WEATHER_API_KEY']!;
-
-    // Assuming userPos is valid, no need to check for null values here
     final stationUrl = await nwsService.getNearestStationUrl(
       userPos.latitude,
       userPos.longitude,
@@ -133,12 +148,10 @@ class _HomeScreenState extends State<HomeScreen> {
             'description': observation.description,
           };
         });
-        updateThemeBasedOnWeather(weatherData['description'] ?? 'Unknown');
+        updateWeatherTheme(weatherData['description'] ?? 'Undefined');
         return;
       }
     }
-
-    // Fallback to OpenWeather if NWS data is not available
     final response = await http.get(Uri.parse(
       'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey'));
     if (response.statusCode == 200) {
@@ -150,13 +163,29 @@ class _HomeScreenState extends State<HomeScreen> {
           'description': responseData['weather']?[0]?['main'] ?? 'N/A',
         };
       });
-      updateThemeBasedOnWeather(weatherData['description'] ?? 'Unknown');
+      updateWeatherTheme(weatherData['description'] ?? 'Undefined');
     } else {
-      print('Error fetching weather data: ${response.statusCode}');
+      print('Error fetching weather: ${response.statusCode}');
     }
   }
 
-  void updateThemeBasedOnWeather(String weatherCondition) {
+  Future<void> fetch7DayForecast() async {
+    final apiKey = dotenv.env['WEATHER_API_KEY']!;
+    final response = await http.get(Uri.parse(
+      'https://api.openweathermap.org/data/2.5/onecall?lat=${userPos.latitude}&lon=${userPos.longitude}&appid=$apiKey'
+    ));
+
+    if (response.statusCode == 200) {
+      final forecastData = json.decode(response.body);
+      setState(() {
+        sevenDayForecast = forecastData['daily']; 
+      });
+    } else {
+      print('Error forecast: ${response.statusCode}');
+    }
+  }
+
+  void updateWeatherTheme(String weatherCondition) {
     ThemeMode newTheme;
     Widget weatherEffect = const SizedBox(); 
     switch (weatherCondition.toLowerCase()) {
@@ -178,11 +207,60 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.updateTheme(newTheme);
   }
 
+  Future<void> fetchMessages() async {
+    final FirebaseFirestore firestore = FirebaseFirestore.instance;
+    final snapshot = await firestore.collection('messages').get();
+    setState(() {
+      markers = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return Marker(
+          markerId: MarkerId(doc.id),
+          position: LatLng(data['latitude'], data['longitude']),
+          infoWindow: InfoWindow(title: data['message']),
+        );
+      }).toList();
+    });
+  }
+
+  Future<void> sendMessage(String message, PickedFile? image) async {
+    final FirebaseFirestore firestore = FirebaseFirestore.instance;
+    final String messageId = firestore.collection('messages').doc().id;
+    String? imageUrl;
+
+    if (image != null) {
+      final firebaseStorageRef = FirebaseStorage.instance.ref().child('images/$messageId');
+      await firebaseStorageRef.putFile(File(image.path));
+      imageUrl = await firebaseStorageRef.getDownloadURL();
+    }
+
+    await firestore.collection('messages').doc(messageId).set({
+      'message': message,
+      'latitude': userPos.latitude,
+      'longitude': userPos.longitude,
+      'imageUrl': imageUrl ?? '',
+    });
+
+    fetchMessages();
+  }
+
+  Future<void> pickImage() async {
+    final PickedFile? image = await _picker.getImage(source: ImageSource.gallery);
+    if (image != null) {
+      sendMessage("See what the world is saying", image);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Weatherly'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.settings),
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
+          ),
+        ],
       ),
       body: weatherData.isEmpty
           ? const Center(child: CircularProgressIndicator())
@@ -205,6 +283,26 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Humidity: ${weatherData['humidity']}%',
                   style: const TextStyle(fontSize: 18),
                 ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: sevenDayForecast.length,
+                    itemBuilder: (context, index) {
+                      final day = sevenDayForecast[index];
+                      return ListTile(
+                        title: Text('Day ${index + 1}: ${day['weather'][0]['description']}'),
+                        subtitle: Text('Temp: ${day['temp']['day']}°C'),
+                      );
+                    },
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: toggleWeatherAlertsVisibility,
+                  child: const Text('Toggle Weather Alerts'),
+                ),
+                ElevatedButton(
+                  onPressed: pickImage,
+                  child: const Text('Pick Image and Send'),
+                ),
               ],
             ),
     );
@@ -220,11 +318,12 @@ class MapScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Live Radar'),
       ),
-      body: const GoogleMap(
+      body: GoogleMap(
         initialCameraPosition: CameraPosition(
           target: LatLng(40.7128, -74.0060),
           zoom: 10,
         ),
+        markers: Set<Marker>.of([]),
       ),
     );
   }
@@ -241,13 +340,21 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Settings'),
       ),
-      body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            updateTheme(ThemeMode.dark); 
-          },
-          child: const Text('Switch Theme'),
-        ),
+      body: Column(
+        children: [
+          ElevatedButton(
+            onPressed: () {
+              updateTheme(ThemeMode.dark); 
+            },
+            child: const Text('Switch to Dark Theme'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              updateTheme(ThemeMode.light);
+            },
+            child: const Text('Switch to Light Theme'),
+          ),
+        ],
       ),
     );
   }

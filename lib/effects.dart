@@ -15,8 +15,6 @@ class _RainState extends State<Rain> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-
-    // Use a fallback size to ensure size is non-null during init
     _screenSize = const Size(400, 800); 
 
     _rainDrops = List.generate(100, (_) => RainDrop(_screenSize.width, _screenSize.height));
@@ -37,8 +35,6 @@ class _RainState extends State<Rain> with SingleTickerProviderStateMixin {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
-    // Update screen size here when context is available
     final size = MediaQuery.of(context).size;
     if (size != Size.zero) {
       _screenSize = size;
