@@ -12,39 +12,6 @@ import 'effects.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // await dotenv.load(fileName: ".env");
-  // final apiKey = dotenv.env['API_KEY'] ?? '';
-  // final authDomain = dotenv.env['AUTH_DOMAIN'] ?? '';
-  // final projectId = dotenv.env['PROJECT_ID'] ?? '';
-  // final storageBucket = dotenv.env['STORAGE_BUCKET'] ?? '';
-  // final messagingSenderId = dotenv.env['MESSAGING_SENDER_ID'] ?? '';
-  // final appId = dotenv.env['APP_ID'] ?? '';
-  // final weatherApiKey = dotenv.env['WEATHER_API_KEY'] ?? '';
-
-  // if ([
-  //   apiKey,
-  //   authDomain,
-  //   projectId,
-  //   storageBucket,
-  //   messagingSenderId,
-  //   appId,
-  //   weatherApiKey
-  // ].contains('')) {
-  //   throw Exception(
-  //       'Missing required environment variables. Check your .env file.');
-  // }
-
-  // await Firebase.initializeApp(
-  //   options: FirebaseOptions(
-  //     apiKey: apiKey,
-  //     authDomain: authDomain,
-  //     projectId: projectId,
-  //     storageBucket: storageBucket,
-  //     messagingSenderId: messagingSenderId,
-  //     appId: appId,
-  //   ),
-  // );
   await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(
     options: FirebaseOptions(
@@ -118,45 +85,43 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String city = 'New York';
+  String city = 'New York';  
   Map<String, dynamic> weatherData = {};
-  Position? userPos;
+  Position userPos = Position(
+    latitude: 37.7749, 
+    longitude: -122.4194,
+    timestamp: DateTime.now(),
+    accuracy: 0.0,
+    altitude: 0.0,
+    speed: 0.0,
+    speedAccuracy: 0.0,
+    headingAccuracy: 0.0,
+    altitudeAccuracy: 0.0,
+    heading: 0.0
+  ); 
 
   @override
   void initState() {
     super.initState();
-    getCurrentLocation();
+    loadWeatherData();
   }
 
-  Future<void> getCurrentLocation() async {
-    try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      userPos = position;
-
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-      setState(() {
-        city = placemarks.isNotEmpty ? placemarks[0].locality ?? 'Unknown' : 'Unknown';
-      });
-
-      fetchWeather();
-    } catch (e) {
-      print('Error: $e');
-    }
+  Future<void> loadWeatherData() async {
+    // You can delay the call to get the current location here
+    Future.delayed(const Duration(seconds: 30), () {
+      fetchWeather(); // Call after 30 seconds
+    });
   }
 
   Future<void> fetchWeather() async {
+    // Fetch the weather based on the current location
     final nwsService = NWSWeatherService();
     final String apiKey = dotenv.env['WEATHER_API_KEY']!;
 
-    if (userPos == null) return;
+    // Assuming userPos is valid, no need to check for null values here
     final stationUrl = await nwsService.getNearestStationUrl(
-      userPos!.latitude,
-      userPos!.longitude,
+      userPos.latitude,
+      userPos.longitude,
     );
     if (stationUrl != null) {
       final observation = await nwsService.getObservation(stationUrl);
@@ -173,8 +138,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    // Fallback to OpenWeather if NWS data is not available
     final response = await http.get(Uri.parse(
-        'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey'));
+      'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey'));
     if (response.statusCode == 200) {
       final Map<String, dynamic> responseData = json.decode(response.body);
       setState(() {
@@ -186,18 +152,18 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       updateThemeBasedOnWeather(weatherData['description'] ?? 'Unknown');
     } else {
-      print('Error a: ${response.statusCode}');
+      print('Error fetching weather data: ${response.statusCode}');
     }
   }
 
   void updateThemeBasedOnWeather(String weatherCondition) {
     ThemeMode newTheme;
-    Widget weatherEffect = const SizedBox(); // Default empty widget
+    Widget weatherEffect = const SizedBox(); 
     switch (weatherCondition.toLowerCase()) {
       case 'clear':
         newTheme = ThemeMode.light;
         break;
-      case 'rain': 
+      case 'rain':
       case 'thunderstorm':
         newTheme = ThemeMode.dark;
         weatherEffect = Rain();

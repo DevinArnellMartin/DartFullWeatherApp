@@ -10,25 +10,40 @@ class Rain extends StatefulWidget {
 class _RainState extends State<Rain> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late List<RainDrop> _rainDrops;
+  late Size _screenSize;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final size = MediaQuery.of(context).size;
-      _rainDrops = List.generate(100, (_) => RainDrop(size.width, size.height));
-      _controller = AnimationController(
-        duration: const Duration(seconds: 2),
-        vsync: this,
-      )..addListener(() {
-          setState(() {
-            for (var drop in _rainDrops) {
-              drop.update(size.width, size.height);
-            }
-          });
-        })
-        ..repeat();
-    });
+
+    // Use a fallback size to ensure size is non-null during init
+    _screenSize = const Size(400, 800); 
+
+    _rainDrops = List.generate(100, (_) => RainDrop(_screenSize.width, _screenSize.height));
+
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..addListener(() {
+        setState(() {
+          for (var drop in _rainDrops) {
+            drop.update(_screenSize.width, _screenSize.height);
+          }
+        });
+      })
+      ..repeat();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Update screen size here when context is available
+    final size = MediaQuery.of(context).size;
+    if (size != Size.zero) {
+      _screenSize = size;
+      _rainDrops = List.generate(100, (_) => RainDrop(_screenSize.width, _screenSize.height));
+    }
   }
 
   @override
@@ -40,7 +55,7 @@ class _RainState extends State<Rain> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: MediaQuery.of(context).size,
+      size: _screenSize,
       painter: RainPainter(_rainDrops),
     );
   }
@@ -111,7 +126,6 @@ class Drizzle extends StatelessWidget {
             ),
           ),
         ),
-
         Rain(),
       ],
     );
