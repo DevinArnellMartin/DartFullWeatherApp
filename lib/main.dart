@@ -51,7 +51,20 @@ class MapScreen extends StatelessWidget {
     );
   }
 }
+/*
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool hideAlerts = false;
+  String theme = 'Light';
+  final List<String> themes = ['Light', 'Dark', 'Verbose'];
+  File? customBackground;
+ Future<void> pickImage() async {
+    // Image Picker code (e.g., use `image_picker` package)
+    // Mock implementation
+    // File pickedImage = await ImagePicker().pickImage(source: ImageSource.gallery);
+    // setState(() { customBackground = pickedImage; });
 
+    }
+*/
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
