@@ -8,27 +8,74 @@ import 'dart:io';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+//api_key == key for weather API, apiKey = key for Firebase
+
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await dotenv.load(fileName: ".env");
+  await Firebase.initializeApp(
+    options: FirebaseOptions(
+      apiKey: dotenv.env['WEATHER_API_KEY']!,
+      authDomain: dotenv.env['AUTH_DOMAIN']!,
+      projectId: dotenv.env['PROJECT_ID']!,
+      storageBucket: dotenv.env['STORAGE_BUCKET']!,
+      messagingSenderId: dotenv.env['MESSAGING_SENDER_ID']!,
+      appId: dotenv.env['APP_ID']!,
+    ),
+  );
   runApp(const WeatherlyApp());
 }
 
-class WeatherlyApp extends StatelessWidget {
+class WeatherlyApp extends StatefulWidget {
   const WeatherlyApp({super.key});
+
+  @override
+  State<WeatherlyApp> createState() => _WeatherlyAppState();
+}
+
+class _WeatherlyAppState extends State<WeatherlyApp> {
+  ThemeMode theme = ThemeMode.light;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+   Future<void> load() async { //TODO CHECK!
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String storedTheme = prefs.getString('theme') ?? 'light'; 
+    setState(() {
+      theme = storedTheme == 'dark' ? ThemeMode.dark : ThemeMode.light; 
+    });
+  }
+
+
+ 
+  void updateTheme(ThemeMode themeMode) {
+    setState(() {
+      theme = themeMode;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Weatherly',
+      theme: ThemeData.light(),
+      darkTheme: ThemeData.dark(),
+      themeMode: theme,
       routes: {
-        '/': (context) => const HomeScreen(),
-        '/settings': (context) => const SettingsScreen(),
+        '/': (context) => HomeScreen(updateTheme: updateTheme),
+        '/settings': (context) => SettingsScreen(updateTheme: updateTheme),
         '/map': (context) => const MapScreen(),
       },
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const HomeScreen(),
     );
   }
 }
@@ -40,7 +87,7 @@ class MapScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Weather Radar'),
+        title: const Text('Live Radar'),
       ),
       body: const GoogleMap(
         initialCameraPosition: CameraPosition(
@@ -53,17 +100,17 @@ class MapScreen extends StatelessWidget {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final Function(ThemeMode) updateTheme;
+
+  const HomeScreen({super.key, required this.updateTheme});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String apiKey = String.fromEnvironment('WEATHER_API_KEY');
   String city = 'New York';
   Map<String, dynamic>? weatherData;
-  Map<String, dynamic>? alertsData;
   Position? userPos;
 
   @override
@@ -73,26 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> getCurrentLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      showSnackbar('Location services are disabled.');
-      return;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        showSnackbar('Location permissions are denied.');
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      showSnackbar('Location permissions are permanently denied.');
-      return;
-    }
-
     Position position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
@@ -110,83 +137,35 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> fetchWeather() async {
+    String api_Key = dotenv.env['WEATHER_API_KEY']!;
     final url = Uri.parse(
-        'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey');
+        'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$api_Key');
     final response = await http.get(url);
     if (response.statusCode == 200) {
       setState(() {
         weatherData = json.decode(response.body);
       });
-    } else {
-      throw Exception('Failed to fetch weather data.');
+      updateThemeBasedOnWeather(weatherData!['weather'][0]['main']);
     }
   }
 
-  Future<void> fetchAlerts() async {
-    if (userPos == null) return;
 
-    String state = await getStateFromCoordinates(
-        userPos!.latitude, userPos!.longitude);
-    final url = Uri.parse(
-        'https://api.weather.gov/alerts/active?area=$state');
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      setState(() {
-        alertsData = json.decode(response.body);
-      });
-      showAlertsDialog();
-    } else {
-      throw Exception('Failed to fetch alerts.');
+  void updateThemeBasedOnWeather(String weatherCondition) {
+    ThemeMode newTheme;
+    switch (weatherCondition.toLowerCase()) {
+      //TODO (?) Make more background interactive in theme
+      case 'clear':
+        newTheme = ThemeMode.light;
+        break;
+      case 'rain':
+      case 'thunderstorm':
+      case 'drizzle':
+        newTheme = ThemeMode.dark;
+        break;
+      default:
+        newTheme = ThemeMode.light;
     }
-  }
-
-  Future<String> getStateFromCoordinates(double lat, double lon) async {
-    List<Placemark> placemarks = await placemarkFromCoordinates(lat, lon);
-    return placemarks.first.administrativeArea ?? '';
-  }
-
-  void showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  void showAlertsDialog() {
-    if (alertsData == null || alertsData!['features'].isEmpty) {
-      showSnackbar('No immenient alerts ');
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Weather Alerts'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 300,
-            child: ListView.builder(
-              itemCount: alertsData!['features'].length,
-              itemBuilder: (context, index) {
-                var alert = alertsData!['features'][index]['properties'];
-                return ListTile(
-                  title: Text(alert['headline'] ?? 'No Title'),
-                  subtitle: Text(alert['description'] ?? 'No Description'),
-                );
-              },
-            ),
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    widget.updateTheme(newTheme);
   }
 
   @override
@@ -194,12 +173,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Weatherly'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications),
-            onPressed: fetchAlerts,
-          ),
-        ],
       ),
       body: weatherData == null
           ? const Center(child: CircularProgressIndicator())
@@ -207,14 +180,14 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Current Weather:$city',
+                  'Current Weather in $city',
                   style: const TextStyle(fontSize: 24),
                 ),
                 Text(
                   '${(weatherData!['main']['temp'] - 273.15).toStringAsFixed(1)}°C',
                   style: const TextStyle(fontSize: 32),
                 ),
-                Text(weatherData!['weather'][0]['description']),
+                Text(weatherData!['weather'][0]['main']),
                 ElevatedButton(
                   onPressed: fetchWeather,
                   child: const Text('Refresh'),
@@ -225,8 +198,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+class SettingsScreen extends StatefulWidget {
+  final Function(ThemeMode) updateTheme;
+
+  const SettingsScreen({super.key, required this.updateTheme});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  String _selectedTheme = 'light';
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _selectedTheme = prefs.getString('theme') ?? 'light';
+    });
+  }
+
+  Future<void> save(String theme) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('theme', theme);
+    ThemeMode themeMode = theme == 'dark' ? ThemeMode.dark : ThemeMode.light;
+    widget.updateTheme(themeMode);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -234,8 +236,25 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Settings'),
       ),
-      body: const Center(
-        child: Text('Settings Screen'),
+      body: Column(
+        children: [
+          ListTile(
+            title: const Text('Default'),
+            trailing: DropdownButton<String>(
+              value: _selectedTheme,
+              items: const [
+                DropdownMenuItem(value: 'light', child: Text('Light Theme')),
+                DropdownMenuItem(value: 'dark', child: Text('Dark Theme')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _selectedTheme = value!;
+                });
+                save(value!);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
