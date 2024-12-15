@@ -12,10 +12,43 @@ import 'effects.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // await dotenv.load(fileName: ".env");
+  // final apiKey = dotenv.env['API_KEY'] ?? '';
+  // final authDomain = dotenv.env['AUTH_DOMAIN'] ?? '';
+  // final projectId = dotenv.env['PROJECT_ID'] ?? '';
+  // final storageBucket = dotenv.env['STORAGE_BUCKET'] ?? '';
+  // final messagingSenderId = dotenv.env['MESSAGING_SENDER_ID'] ?? '';
+  // final appId = dotenv.env['APP_ID'] ?? '';
+  // final weatherApiKey = dotenv.env['WEATHER_API_KEY'] ?? '';
+
+  // if ([
+  //   apiKey,
+  //   authDomain,
+  //   projectId,
+  //   storageBucket,
+  //   messagingSenderId,
+  //   appId,
+  //   weatherApiKey
+  // ].contains('')) {
+  //   throw Exception(
+  //       'Missing required environment variables. Check your .env file.');
+  // }
+
+  // await Firebase.initializeApp(
+  //   options: FirebaseOptions(
+  //     apiKey: apiKey,
+  //     authDomain: authDomain,
+  //     projectId: projectId,
+  //     storageBucket: storageBucket,
+  //     messagingSenderId: messagingSenderId,
+  //     appId: appId,
+  //   ),
+  // );
   await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(
     options: FirebaseOptions(
-      apiKey: dotenv.env['FIREBASE_API_KEY']!,
+      apiKey: dotenv.env['API_KEY']!,
       authDomain: dotenv.env['AUTH_DOMAIN']!,
       projectId: dotenv.env['PROJECT_ID']!,
       storageBucket: dotenv.env['STORAGE_BUCKET']!,
@@ -86,7 +119,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String city = 'New York';
-  Map<String, dynamic>? weatherData;
+  Map<String, dynamic> weatherData = {};
   Position? userPos;
 
   @override
@@ -107,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
         position.longitude,
       );
       setState(() {
-        city = placemarks[0].locality ?? 'Unknown';
+        city = placemarks.isNotEmpty ? placemarks[0].locality ?? 'Unknown' : 'Unknown';
       });
 
       fetchWeather();
@@ -135,18 +168,23 @@ class _HomeScreenState extends State<HomeScreen> {
             'description': observation.description,
           };
         });
+        updateThemeBasedOnWeather(weatherData['description'] ?? 'Unknown');
         return;
       }
     }
 
-    //Probably do not not even need second API
     final response = await http.get(Uri.parse(
         'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey'));
     if (response.statusCode == 200) {
+      final Map<String, dynamic> responseData = json.decode(response.body);
       setState(() {
-        weatherData = json.decode(response.body);
+        weatherData = {
+          'pressure': responseData['main']?['pressure'] ?? 'N/A',
+          'humidity': responseData['main']?['humidity'] ?? 'N/A',
+          'description': responseData['weather']?[0]?['main'] ?? 'N/A',
+        };
       });
-      updateThemeBasedOnWeather(weatherData!['weather'][0]['main']);
+      updateThemeBasedOnWeather(weatherData['description'] ?? 'Unknown');
     } else {
       print('Error a: ${response.statusCode}');
     }
@@ -154,20 +192,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void updateThemeBasedOnWeather(String weatherCondition) {
     ThemeMode newTheme;
-    Widget weather = Container();
+    Widget weatherEffect = const SizedBox(); // Default empty widget
     switch (weatherCondition.toLowerCase()) {
       case 'clear':
         newTheme = ThemeMode.light;
         break;
       case 'rain': 
-        newTheme = ThemeMode.dark;
-        weather = Rain();
       case 'thunderstorm':
         newTheme = ThemeMode.dark;
-        weather = Rain();
+        weatherEffect = Rain();
+        break;
       case 'drizzle':
         newTheme = ThemeMode.dark;
-        weather = Drizzle();
+        weatherEffect = Drizzle();
         break;
       default:
         newTheme = ThemeMode.light;
@@ -181,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Weatherly'),
       ),
-      body: weatherData == null
+      body: weatherData.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -190,24 +227,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Current Weather in $city',
                   style: const TextStyle(fontSize: 24),
                 ),
-                weatherData!['description'] != null
-                    ? Text(
-                        weatherData!['description'],
-                        style: const TextStyle(fontSize: 18),
-                      )
-                    : const SizedBox(),
-                weatherData!['pressure'] != null
-                    ? Text(
-                        'Pressure: ${weatherData!['pressure']} hPa',
-                        style: const TextStyle(fontSize: 18),
-                      )
-                    : const SizedBox(),
-                weatherData!['humidity'] != null
-                    ? Text(
-                        'Humidity: ${weatherData!['humidity']}%',
-                        style: const TextStyle(fontSize: 18),
-                      )
-                    : const SizedBox(),
+                Text(
+                  weatherData['description'] ?? 'No Data',
+                  style: const TextStyle(fontSize: 18),
+                ),
+                Text(
+                  'Pressure: ${weatherData['pressure']} hPa',
+                  style: const TextStyle(fontSize: 18),
+                ),
+                Text(
+                  'Humidity: ${weatherData['humidity']}%',
+                  style: const TextStyle(fontSize: 18),
+                ),
               ],
             ),
     );

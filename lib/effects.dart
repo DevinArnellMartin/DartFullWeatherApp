@@ -9,23 +9,26 @@ class Rain extends StatefulWidget {
 
 class _RainState extends State<Rain> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  List<RainDrop> _rainDrops = [];
+  late List<RainDrop> _rainDrops;
 
   @override
   void initState() {
     super.initState();
-    _rainDrops = List.generate(100, (_) => RainDrop());
-    _controller = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..addListener(() {
-        setState(() {
-          for (var drop in _rainDrops) {
-            drop.update();
-          }
-        });
-      })
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final size = MediaQuery.of(context).size;
+      _rainDrops = List.generate(100, (_) => RainDrop(size.width, size.height));
+      _controller = AnimationController(
+        duration: const Duration(seconds: 2),
+        vsync: this,
+      )..addListener(() {
+          setState(() {
+            for (var drop in _rainDrops) {
+              drop.update(size.width, size.height);
+            }
+          });
+        })
         ..repeat();
+    });
   }
 
   @override
@@ -49,18 +52,22 @@ class RainDrop {
   double speed;
   double length;
 
-  RainDrop()
-      : x = Random().nextDouble() * 400,
-        y = Random().nextDouble() * 800,
+  RainDrop(double width, double height)
+      : x = Random().nextDouble() * width,
+        y = Random().nextDouble() * height,
         speed = 2 + Random().nextDouble() * 5,
         length = 10 + Random().nextDouble() * 10;
 
-  void update() {
+  void update(double width, double height) {
     y += speed;
-    if (y > 800) {
-      y = 0;
-      x = Random().nextDouble() * 400;
+    if (y > height) {
+      reset(width, height);
     }
+  }
+
+  void reset(double width, double height) {
+    x = Random().nextDouble() * width;
+    y = 0;
   }
 }
 

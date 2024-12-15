@@ -2,8 +2,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class Observation {
-  final double pressure; 
-  final double humidity; 
+  final double pressure;
+  final double humidity;
   final String description;
 
   const Observation({
@@ -14,8 +14,8 @@ class Observation {
 
   String format() {
     return 'Pressure: ${pressure.toStringAsFixed(2)} hPa\n'
-           'Humidity: ${humidity.toStringAsFixed(0)}%\n'
-           'Description: $description';
+        'Humidity: ${humidity.toStringAsFixed(0)}%\n'
+        'Description: $description';
   }
 }
 
@@ -23,7 +23,7 @@ class NWSWeatherService {
   static const String NWSURL = "https://api.weather.gov";
   static const Map<String, String> headers = {
     "Accept": "application/geo+json",
-    "User-Agent": "Wealthly  (https://github.com/DevinArnellMartin/DartFullWeatherApp)"
+    "User-Agent": "Wealthly (https://github.com/DevinArnellMartin/DartFullWeatherApp)"
   };
 
   Future<String?> getNearestStationUrl(double latitude, double longitude) async {
@@ -36,7 +36,7 @@ class NWSWeatherService {
         return data['observationStations'][0];
       }
     }
-    return null;
+    return null; 
   }
 
   Future<Observation?> getObservation(String stationUrl) async {
@@ -46,18 +46,14 @@ class NWSWeatherService {
     if (res.statusCode == 200) {
       final data = json.decode(res.body);
       final properties = data['properties'];
-
-      if (properties != null &&
-          properties['barometricPressure'] != null &&
-          properties['relativeHumidity'] != null &&
-          properties['textDescription'] != null) {
+      if (properties != null) {
         return Observation(
-          pressure: (properties['barometricPressure']['value'] ?? 0.0) / 100.0, 
-          humidity: properties['relativeHumidity']['value'] ?? 0.0,
-          description: properties['textDescription'],
+          pressure: ((properties['barometricPressure']?['value'] ?? 0.0) / 100.0),
+          humidity: (properties['relativeHumidity']?['value'] ?? 0.0),
+          description: properties['textDescription'] ?? 'No description',
         );
       }
     }
-    return null;
+    return null; 
   }
 }
