@@ -41,6 +41,7 @@ class WeatherApp extends StatefulWidget {
 
 class WeatherState extends State<WeatherApp> {
   ThemeMode theme = ThemeMode.light;
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -71,12 +72,48 @@ class WeatherState extends State<WeatherApp> {
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
       themeMode: theme,
-      routes: {
-        '/': (context) => HomeScreen(updateTheme: updateTheme),
-        '/settings': (context) => SettingsScreen(updateTheme: updateTheme),
-        '/map': (context) => const MapScreen(),
-      },
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Weatherly')),
+        body: _getScreen(),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: onTabTapped,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.map),
+              label: 'Radar',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings),
+              label: 'Settings',
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  Widget _getScreen() {
+    switch (_currentIndex) {
+      case 0:
+        return HomeScreen(updateTheme: updateTheme);
+      case 1:
+        return const MapScreen();
+      case 2:
+        return SettingsScreen(updateTheme: updateTheme);
+      default:
+        return HomeScreen(updateTheme: updateTheme);
+    }
+  }
+
+  void onTabTapped(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
   }
 }
 
@@ -86,28 +123,17 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.updateTheme});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  String city = 'New York';  
+class HomeState extends State<HomeScreen> {
+  String city = 'New York';
   Map<String, dynamic> weatherData = {};
-  Position userPos = Position(
-    latitude: 37.7749, 
-    longitude: -122.4194,
-    timestamp: DateTime.now(),
-    accuracy: 0.0,
-    altitude: 0.0,
-    speed: 0.0,
-    speedAccuracy: 0.0,
-    headingAccuracy: 0.0,
-    altitudeAccuracy: 0.0,
-    heading: 0.0
-  ); 
+  Position userPos = Position(latitude: 37.7749, longitude: -122.4194, timestamp: DateTime.now(), accuracy: 0.0, altitude: 0.0, speed: 0.0, speedAccuracy: 0.0, headingAccuracy: 0.0, altitudeAccuracy: 0.0, heading: 0.0);
 
   bool showAlerts = true;
-  List<dynamic> sevenDayForecast = []; 
-  List<Marker> markers = [];  
+  List<dynamic> sevenDayForecast = [];
+  List<Marker> markers = [];
 
   final ImagePicker _picker = ImagePicker();
 
@@ -115,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     loadWeatherData();
-    fetchMessages();
+    getMSG();
   }
 
   Future<void> loadWeatherData() async {
@@ -127,17 +153,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void toggleWeatherAlertsVisibility() {
     setState(() {
-      showAlerts = !showAlerts;  
+      showAlerts = !showAlerts;
     });
   }
-  
+
   Future<void> fetchWeather() async {
     final nwsService = NWSWeatherService();
     final String apiKey = dotenv.env['WEATHER_API_KEY']!;
-    final stationUrl = await nwsService.getNearestStationUrl(
-      userPos.latitude,
-      userPos.longitude,
-    );
+    final stationUrl = await nwsService.getNearestStationUrl(userPos.latitude, userPos.longitude);
     if (stationUrl != null) {
       final observation = await nwsService.getObservation(stationUrl);
       if (observation != null) {
@@ -152,8 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
     }
-    final response = await http.get(Uri.parse(
-      'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey'));
+    final response = await http.get(Uri.parse('https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey'));
     if (response.statusCode == 200) {
       final Map<String, dynamic> responseData = json.decode(response.body);
       setState(() {
@@ -172,13 +194,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> fetch7DayForecast() async {
     final apiKey = dotenv.env['WEATHER_API_KEY']!;
     final response = await http.get(Uri.parse(
-      'https://api.openweathermap.org/data/2.5/onecall?lat=${userPos.latitude}&lon=${userPos.longitude}&appid=$apiKey'
+      "https://api.openweathermap.org/data/2.5/forecast/daily?lat=${userPos.latitude}&lon=${userPos.longitude}&appid=$apiKey"
+      // 'https://api.openweathermap.org/data/2.5/onecall?lat=${userPos.latitude}&lon=${userPos.longitude}&appid=$apiKey'
     ));
 
     if (response.statusCode == 200) {
       final forecastData = json.decode(response.body);
       setState(() {
-        sevenDayForecast = forecastData['daily']; 
+        sevenDayForecast = forecastData['daily'];
       });
     } else {
       print('Error forecast: ${response.statusCode}');
@@ -187,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void updateWeatherTheme(String weatherCondition) {
     ThemeMode newTheme;
-    Widget weatherEffect = const SizedBox(); 
+    Widget weatherEffect = const SizedBox();
     switch (weatherCondition.toLowerCase()) {
       case 'clear':
         newTheme = ThemeMode.light;
@@ -207,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.updateTheme(newTheme);
   }
 
-  Future<void> fetchMessages() async {
+  Future<void> getMSG() async {
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
     final snapshot = await firestore.collection('messages').get();
     setState(() {
@@ -222,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> sendMessage(String message, PickedFile? image) async {
+  Future<void> sendMSG(String message, PickedFile? image) async {
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
     final String messageId = firestore.collection('messages').doc().id;
     String? imageUrl;
@@ -240,13 +263,13 @@ class _HomeScreenState extends State<HomeScreen> {
       'imageUrl': imageUrl ?? '',
     });
 
-    fetchMessages();
+    getMSG();
   }
 
   Future<void> pickImage() async {
     final PickedFile? image = await _picker.getImage(source: ImageSource.gallery);
     if (image != null) {
-      sendMessage("See what the world is saying", image);
+      sendMSG("See what the world is saying", image);
     }
   }
 
@@ -255,12 +278,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Weatherly'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.settings),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
-          ),
-        ],
       ),
       body: weatherData.isEmpty
           ? const Center(child: CircularProgressIndicator())
@@ -301,7 +318,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 ElevatedButton(
                   onPressed: pickImage,
-                  child: const Text('Pick Image and Send'),
+                  child: const Text('Send Image'),
                 ),
               ],
             ),
@@ -309,22 +326,144 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class MapScreen extends StatelessWidget {
+class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
+
+  @override
+  _MapScreenState createState() => _MapScreenState();
+}
+
+class _MapScreenState extends State<MapScreen> {
+  String radarUrl = '';
+  String message = '';
+  final ImagePicker _picker = ImagePicker();
+  late File _image;
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchRadarData();
+  }
+
+Future<void> fetchRadarData() async { 
+    Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
+    String latitude = position.latitude.toString();
+    String longitude = position.longitude.toString();
+
+    String apiUrl =
+        'https://api.weather.gov/radar/1.0/radar?lat=$latitude&lon=$longitude';
+
+    try {
+        final response = await http.get(Uri.parse(apiUrl));
+
+        if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            setState(() {
+                radarUrl = data['url'] ?? '';
+            });
+        } else {
+            print('Error fetching radar data: ${response.statusCode}');
+        }
+    } catch (e) {
+        print('Error fetching radar: $e');
+    }
+}
+
+Future<void> pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+        setState(() {
+            _image = File(pickedFile.path);
+        });
+    }
+}
+
+Future<void> sendMessage() async {
+    if (message.isNotEmpty && _image != null) {
+        setState(() {
+            isLoading = true;
+        });
+        String imageUrl = '';
+        try {
+            final storageRef = FirebaseStorage.instance
+                .ref()
+                .child('messages/${DateTime.now().millisecondsSinceEpoch}');
+            await storageRef.putFile(_image);
+            imageUrl = await storageRef.getDownloadURL();
+
+            final firestore = FirebaseFirestore.instance;
+            final messageId = firestore.collection('messages').doc().id;
+            await firestore.collection('messages').doc(messageId).set({
+                'message': message,
+                'imageUrl': imageUrl,
+                'timestamp': FieldValue.serverTimestamp(),
+            });
+        } catch (e) {
+            print('Error uploading image: $e');
+        } finally {
+            setState(() {
+                isLoading = false;
+            });
+        }
+    }
+}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Live Radar'),
+        title: const Text('Live Radar & Message Upload'),
       ),
-      body: GoogleMap(
-        initialCameraPosition: CameraPosition(
-          target: LatLng(40.7128, -74.0060),
-          zoom: 10,
-        ),
-        markers: Set<Marker>.of([]),
-      ),
+      body: radarUrl.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      Image.network(
+                        radarUrl,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: TextField(
+                          onChanged: (value) {
+                            setState(() {
+                              message = value;
+                            });
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'Enter your message',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: pickImage,
+                        child: const Text('Pick Image'),
+                      ),
+                      if (_image != null)
+                        Image.file(
+                          _image,
+                          height: 100,
+                          width: 100,
+                          fit: BoxFit.cover,
+                        ),
+                      if (isLoading)
+                        const CircularProgressIndicator(),
+                      ElevatedButton(
+                        onPressed: sendMessage,
+                        child: const Text('Send Message'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -344,7 +483,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           ElevatedButton(
             onPressed: () {
-              updateTheme(ThemeMode.dark); 
+              updateTheme(ThemeMode.dark);
             },
             child: const Text('Switch to Dark Theme'),
           ),
