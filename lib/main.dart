@@ -313,9 +313,10 @@ class HomeState extends State<HomeScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: toggleWeatherAlertsVisibility,
-                  child: const Text('Toggle Weather Alerts'),
-                ),
+            onPressed: toggleWeatherAlertsVisibility,
+            child: Text(showAlerts ? 'Hide Weather Alerts' : 'Show Weather Alerts'),
+          ),
+          if (showAlerts) WeatherAlertWidget(),
                 ElevatedButton(
                   onPressed: pickImage,
                   child: const Text('Send Image'),
@@ -409,7 +410,6 @@ Future<void> sendMessage() async {
         }
     }
 }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
